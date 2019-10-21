@@ -1,0 +1,165 @@
+function Validate(s, e) {
+
+        lblSuccessMessage.SetText("");
+        lbl25percent.SetText("");
+        lbl50percent.SetText("");
+        lbl75percent.SetText("");
+        lbl95percent.SetText("");
+
+        //  var ReloadSettings = '<%# Session["ReloadSettings"] %>';
+
+        if ((cmbMentalIssue.GetValue() == null || cmbMentalIssue.GetValue() == 0) && (cmbAgeOfSubject.GetValue() == null || cmbAgeOfSubject.GetValue() == 0) && (cmbActivityOfSubject.GetValue() == null || cmbActivityOfSubject.GetValue() == 0)) {
+            alert("Please select mental issue or age or activity !");
+            e.processOnServer = false;
+        }
+
+        if (txtAddress.GetText() == "" && (txtLatitude.GetText() == "" || txtLongitude.GetText() == "") && (cmbMapProfile.GetValue() == null || cmbMapProfile.GetValue() == 0) && txtusng.GetText() == "") {
+            alert("Please enter Address or Latitude and Longitude or USNG or select MAP Background!")
+            e.processOnServer = false;
+        }
+
+
+        if (e.processOnServer == true) {
+            var latlongcalculated = "0";
+
+            //set lat & long from USNG
+
+            if (txtusng.GetText() != "" && txtLatitude.GetText() == "" && txtLongitude.GetText() == "") {
+                u = new USNG2();
+                var points = u.toLonLat(txtusng.GetText());
+
+                txtLatitude.SetText(points.lat);
+                txtLongitude.SetText(points.lon);
+                latlongcalculated = "1";
+            }
+
+            //set usng from lat long
+            if (txtLatitude.GetText() != "" && txtLongitude.GetText() != "" && latlongcalculated == "0") {
+
+                u = new USNG2();
+                var USNGNumber = u.fromLonLat({ lon: txtLongitude.GetText(), lat: txtLatitude.GetText() }, 5);
+
+                txtusng.SetText(USNGNumber);
+                //alert(USNGNumber);
+            }
+
+            var overlayid = 0;
+            var mapprofileyid = 0;
+            if (chkshowprofilesegment.GetValue() == true && cmbmapsegmentfile.GetValue() != null && cmbmapsegmentfile.GetValue() != "0") {
+                mapprofileyid = cmbmapsegmentfile.GetValue();
+                if (cmbMapProfile.GetValue() != null && cmbMapProfile.GetValue() != "0") {
+                    overlayid = cmbMapProfile.GetValue();
+                }
+            }
+
+            if (chkshowprofilesegment.GetValue() == true) {
+                if (cmbmapsegmentfile.GetValue() != null && cmbmapsegmentfile.GetValue() != "0") {
+                    var Opacity = txtOpacity.GetText() / 100.00;
+
+                    window.open('./Segments.aspx?id=' + mapprofileyid + '&oid=' + overlayid + '&USNG=' + chksshowusnggrid.GetValue() + '&MapTypeView=' + cmbmaptype.GetValue() + '&MapViewType=' + cmbMapViewType.GetValue() + '&Opacity=' + Opacity + '&USNGGridLineOpacity=' + txtGridOpacity.GetText() + '&USNGGridLineWidth=' + txtGridWidth.GetText(), "SegmentWindow", "", "");
+                    // window.open('./ShowMAPNew.aspx?id=' + mapprofileyid + '&oid=' + overlayid + '&USNG=' + chksshowusnggrid.GetValue() + '&MapTypeView=' + cmbmaptype.GetValue() + '&MapViewType=' + cmbMapViewType.GetValue() + '&Opacity=' + Opacity, "SegmentWindow", "", "");
+
+                }
+                else {
+                    alert("Please select value from Map Profile or Uncheck Show Profile Segment!");
+                    e.processOnServer = false;
+                }
+            }
+        }
+
+        if (txtOpacity.GetText() == '') {
+            txtOpacity.SetText(0);
+        }
+        }
+        
+        Here are some sample code that I implemented:
+
+
+
+function autorefresh() {
+        if (chkboxrefreshmap.GetCheckState() == 'Checked') {
+            var RefreshTime = txtrefreshminutes.GetText() * 60 * 1000;
+            setInterval(function () { btnGo.DoClick(); }, RefreshTime);
+        }
+
+    }
+function ProcessKeyPress(s, evt) {
+        var charCode = (evt.htmlEvent.which) ? evt.htmlEvent.which : event.keyCode
+        if (charCode > 31 && (charCode < 48 || charCode > 57)) {
+            _aspxPreventEvent(evt.htmlEvent);
+        }
+    }
+
+    var textSeparator = ";";
+    function OnListBoxSelectionChanged(listBox, args) {
+        if (args.index == 0)
+            args.isSelected ? listBox.SelectAll() : listBox.UnselectAll();
+        UpdateSelectAllItemState();
+        UpdateText();
+    }
+
+function DisplayKML(s)
+	{ 
+	var keys =''; 
+	
+	keys = gvMapKMLLayers.GetSelectedKeysOnPage(); 
+	
+	DeleteKMLLayer(); 
+	
+	var KMLLayerPath = document.getElementById("hdRetriveKMLLayer").value; 
+	
+	if(KMLLayerPath.length>0) 
+	{ 
+	
+	
+	var Layers = KMLLayerPath.split("::"); 
+	
+	
+	var LayerID; 
+	
+	var LayerDetails; 
+	var LayerPath; 
+	
+	
+	for (i = 0 ; i < Layers.length; i++) 
+	{ 
+	LayerDetails =Layers[i].split("="); 
+	LayerID=LayerDetails[0]; 
+	LayerPath=LayerDetails[1]; 
+	if(keys.includes(LayerID)==false) 
+	continue; 
+	ctaLayer = new google.maps.KmlLayer({ 
+	url: LayerPath, 
+	map:map, 
+	id : LayerID 
+	}); 
+	arrKMLLayer[i]=ctaLayer; 
+	} 
+	} 
+	
+function FileUploaded(s, e) {
+    var fieldSeparator = "|";
+    if (e.isValid) {
+        //alert('test');
+        //var linkFile = document.createElement("a");
+        var indexSeparator = e.callbackData.indexOf(fieldSeparator);
+        var fileName = e.callbackData.substring(0, indexSeparator);
+        var fullpath = e.callbackData.substring(indexSeparator + 1);
+        //var pictureUrl = e.callbackData.substring(indexSeparator + fieldSeparator.length);
+        //var date = new Date();
+        //var imgSrc = "UploadImages/" + pictureUrl + "?dx=" + date.getTime();
+        //linkFile.innerHTML = fileName;
+        //linkFile.setAttribute("href", imgSrc);
+        //linkFile.setAttribute("target", "_blank");
+        //var container = document.getElementById("uploadedListFiles");
+        //container.appendChild(linkFile);
+        //container.appendChild(document.createElement("br"));
+
+        lstfile.AddItem(fileName, fullpath, "");
+        var text = Memofile.GetText();
+        if (text == "")
+            Memofile.SetText(fileName);
+        else
+            Memofile.SetText(text + "," + fileName);
+    }
+}
