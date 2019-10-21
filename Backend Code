@@ -1,0 +1,190 @@
+protected void Page_Init(object sender, EventArgs e)
+        {
+
+            cpPopupmapprofile.Callback += new DevExpress.Web.CallbackEventHandlerBase(cpPopupmapprofile_Callback);
+            cmbmapsegmentfile.Callback += new DevExpress.Web.CallbackEventHandlerBase(cmbmapsegmentfile_Callback);
+
+
+        }
+
+protected void listBox_Init(object sender, EventArgs e)
+        {
+            //DataTable dtTeams = new DataTable();
+            //if (Session["dtTeams"] != null)
+            //    dtTeams = (DataTable)Session["dtTeams"];
+            //else
+            //    dtTeams = dt.GetTeamTypes()
+            //  ui.CurrentIncidentID.ToString()= lblincidentid.Text;
+            ui = (UserInfo)Session["UserInfo"];
+
+            DataTable dtTeamList = new DataTable();
+
+            dtTeamList = dt.GetTeamList(ui.CurrentIncidentID);
+
+            DataRow dr = dtTeamList.NewRow();
+            dr["TeamID"] = 0;
+            dr["TeamName"] = "All";
+
+            dtTeamList.Rows.InsertAt(dr, 0);
+
+            DevExpress.Web.ASPxListBox listBox = (DevExpress.Web.ASPxListBox)sender;
+
+            listBox.DataSource = dtTeamList;
+            listBox.ValueField = "TeamID";
+            listBox.TextField = "TeamName";
+
+            listBox.DataBind();
+
+            listBox.SelectAll();
+
+            cmbTeams.Text = "";
+
+            for (int i = 0; i < listBox.Items.Count; i++)
+            {
+                if (listBox.Items[i].Selected == true)
+                {
+                    if (cmbTeams.Text == "")
+                    {
+                        cmbTeams.Text = listBox.Items[i].Text;
+                    }
+                    else
+                    {
+                        cmbTeams.Text = cmbTeams.Text + ";" + listBox.Items[i].Text;
+                    }
+                }
+            }
+
+        
+        
+         protected void popupEmail_Callback(object sender, DevExpress.Web.CallbackEventArgsBase e)
+        {
+            try
+            {
+                string[] details = e.Parameter.Split(new char[] { ':' }, StringSplitOptions.RemoveEmptyEntries);
+                int IncidentParameter = Convert.ToInt32(details[0]);
+                Session["IncidentID"] = IncidentParameter;
+                Session["PrimaryAgencyID"] = null;
+
+                string IncidentName = gvAgencyIncidents.GetRowValuesByKeyValue(Session["IncidentID"], new string[] { "IncidentName" }).ToString();
+
+                if (Convert.ToInt32(gvAgencyIncidents.GetRowValuesByKeyValue(Session["IncidentID"], new string[] { "MessageCount" })) == 0)
+                {
+                    txtSubject.Text = IncidentName;
+                }
+
+                string FromAddress = string.Empty;
+                string CCAddress = string.Empty;
+                string BCCAddress = string.Empty;
+
+                /*if (dtaUserAlloptions.Select("OptionName='UseUserEmail' and OptionValue = '1'").Length > 0)
+                {
+                    txtEmailFrom.Text = dtaUsers.Select("UserID='" + ui.UserID + "'")[0]["EmailAddress"].ToString();
+                }*/
+
+                if (dtaUserAlloptions.Select("OptionName='FromAddress'").Length > 0)
+                {
+                    FromAddress = dtaUserAlloptions.Select("OptionName='FromAddress'")[0]["OptionValue"].ToString();
+                    txtEmailFrom.Text = FromAddress;
+                }
+                if (dtaUserAlloptions.Select("OptionName='CCAddress'").Length > 0)
+                {
+                    CCAddress = dtaUserAlloptions.Select("OptionName='CCAddress'")[0]["OptionValue"].ToString();
+                    txtCC.Text = CCAddress;
+                }
+                if (dtaUserAlloptions.Select("OptionName='BCCAddress'").Length > 0)
+                {
+                    BCCAddress = dtaUserAlloptions.Select("OptionName='BCCAddress'")[0]["OptionValue"].ToString();
+                    txtBcc.Text = BCCAddress;
+                }
+
+                int PrimaryAgencyID = 0;
+                if (details[1] != "")
+                {
+                    PrimaryAgencyID = Convert.ToInt32(details[1]);
+                    Session["PrimaryAgencyID"] = PrimaryAgencyID;
+                }
+                GetContactDetail(PrimaryAgencyID);
+
+                DataTable dtcontactemail = GetContactEmail(PrimaryAgencyID);
+                foreach (DataRow dr in dtcontactemail.Rows)
+                {
+                    hdContactEmail.Add(dr["ContactID"].ToString(), dr["Email"].ToString());
+                }
+
+            }
+            catch { }
+            int EmailID = 0;
+            string EmailDeliverFolder;
+
+            if (System.Configuration.ConfigurationManager.AppSettings["EmailDeliveryFolder"] != null && System.Configuration.ConfigurationManager.AppSettings["EmailDeliveryFolder"] != "")
+            {
+                EmailDeliverFolder = System.Configuration.ConfigurationManager.AppSettings["EmailDeliveryFolder"];
+                log.Info("Email is saving to EmailDeliverFolder :" + EmailDeliverFolder);
+            }
+            else
+                throw new Exception("EmailDeliveryFolder entry not found!");
+            hdEmailSent.Value = "";
+            if (e.Parameter.ToString() == "Send")
+            {
+                MailMessage msg = new MailMessage();
+                msg.From.EMail = txtEmailFrom.Text.Trim();
+                msg.Sender.EMail = txtEmailFrom.Text.Trim();
+                msg.HTMLMessage.Body = editorEmailContentCompose.Html;
+                msg.Subject = txtSubject.Text;
+
+                AddressCollection EmailTo = new AddressCollection();
+                EmailTo.AddRange(txtEmailTo.Text.Split(new char[] { ',' }, StringSplitOptions.RemoveEmptyEntries));
+                msg.To = EmailTo;
+
+                AddressCollection CC = new AddressCollection();
+                CC.AddRange(txtCC.Text.Split(new char[] { ',' }, StringSplitOptions.RemoveEmptyEntries));
+                msg.Cc = CC;
+
+                AddressCollection BCC = new AddressCollection();
+                BCC.AddRange(txtBcc.Text.Split(new char[] { ',' }, StringSplitOptions.RemoveEmptyEntries));
+                msg.Bcc = BCC;
+
+                foreach (ListEditItem l in lstfile.Items)
+                {
+                    msg.Attachments.Add(new Attachment(l.Value.ToString()));
+                }
+
+                EmailID = SaveEmail(msg, msg.Attachments.Count);
+
+                foreach (ListEditItem l in lstfile.Items)
+                {
+                    String AttachmentPath = l.Value.ToString();
+                    log.Info("started saving of Email Attachment");
+                    SaveAttachment(EmailID, AttachmentPath, "");
+                    log.Info("Finish saving of Email Attachment");
+
+                }
+
+                if (System.Configuration.ConfigurationManager.AppSettings["UseSendGridToEmail"] != null && System.Configuration.ConfigurationManager.AppSettings["UseSendGridToEmail"] != "" && System.Configuration.ConfigurationManager.AppSettings["UseSendGridToEmail"].ToString() == "1")
+                {
+                    log.Info("Started Email sending directly");
+                    dt.EmailSending(msg);
+                    log.Info("Email sent successafully");
+                }
+                else
+                {
+                    log.Info("started email sending through SMTPserver");
+                    DateTime dt = DateTime.Now;
+                    String date = dt.ToString("incMMddyyyy HHmmss");
+                    string emailsavingpath = EmailDeliverFolder + @"\" + date + ".eml";
+                    msg.SaveMessageToFile(emailsavingpath);
+                    log.Info("Email File saving Path : "+emailsavingpath);
+                 
+                    log.Info("Email sent successfully");
+                }
+
+                //DateTime dt = DateTime.Now;
+                //String date = dt.ToString("incMMddyyyy HHmmss");
+                //msg.SaveMessageToFile(EmailDeliverFolder + @"\" + date + ".eml");
+
+                hdEmailSent.Value = "1";
+            }
+            //AppendHeader();
+            editorEmailContentCompose.Html += editorEmailContent.Html;
+            GetResponseEmailAddresses();
+        }
