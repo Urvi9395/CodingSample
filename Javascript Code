@@ -72,8 +72,7 @@ function Validate(s, e) {
         }
         }
         
-        Here are some sample code that I implemented:
-
+       
 
 
 function autorefresh() {
