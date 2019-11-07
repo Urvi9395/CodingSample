@@ -298,3 +298,767 @@ protected void btnsavedata_Click(object sender, EventArgs e)
                 throw;
             }
         }
+
+
+public void LoadNewXMLFiles()
+		{
+			try
+			{
+				log.Info("LoadNewXMLFiles called");
+				if(System.Configuration.ConfigurationSettings.AppSettings["IncomingFilesLocation"]!=null)
+				{
+					if(System.Configuration.ConfigurationSettings.AppSettings["IncomingFilesLocation"].ToString()!=string.Empty)
+					{
+						if(System.IO.Directory.Exists(System.Configuration.ConfigurationSettings.AppSettings["IncomingFilesLocation"].ToString()))
+						{
+							string IncomingFileLocation = System.Configuration.ConfigurationSettings.AppSettings["IncomingFilesLocation"].ToString();
+							string ProcessedFilesLocation =string.Empty;
+							if(System.Configuration.ConfigurationSettings.AppSettings["ProcessedFilesLocation"]!=null)
+							{
+								ProcessedFilesLocation = System.Configuration.ConfigurationSettings.AppSettings["ProcessedFilesLocation"].ToString();							
+							}
+
+							log.Info("IncomingFilesLocation folder found");
+
+							string OrderManagerWS = string.Empty;
+							if(System.Configuration.ConfigurationSettings.AppSettings["IncomingFilesLocation"]!=null)
+							{
+								OrderManagerWS= System.Configuration.ConfigurationSettings.AppSettings["OrderManagerWS"].ToString();
+							}
+							else
+							{
+								log.Info("OrderManagerWS key not found to load new xml files");
+								return;
+							}
+							string[] xmlFiles = System.IO.Directory.GetFiles(System.Configuration.ConfigurationSettings.AppSettings["IncomingFilesLocation"].ToString(),"*.xml");
+							string xmlContent = string.Empty;
+							foreach( string xmlfile in xmlFiles)
+							{
+                                try
+                                {
+                                    try
+                                    {
+                                        log.Info("Fixing SupplierPartID in File : " + xmlfile);
+                                        bool ChangeMade = false;
+                                        XmlDocument xDoc = new XmlDocument();
+                                        xDoc.Load(xmlfile);
+                                        XmlNodeList xNodeList = xDoc.SelectNodes("//cXML/Request/OrderRequest/ItemOut");
+                                        foreach (XmlNode xNode in xNodeList)
+                                        {
+                                            if (xNode.SelectSingleNode("ItemID/SupplierPartID").InnerText.Trim().Length == 0)
+                                            {
+                                                if (xNode.SelectSingleNode("ItemDetail/SupplierPartID").InnerText.Trim().Length > 0)
+                                                {
+                                                    xNode.SelectSingleNode("ItemID/SupplierPartID").InnerText = xNode.SelectSingleNode("ItemDetail/SupplierPartID").InnerText;
+                                                    ChangeMade = true;
+                                                }
+                                            }
+                                            else
+                                            {
+                                                log.Info("SupplierPartID is already there Under ItemID");
+                                            }
+                                        }
+                                        if (ChangeMade)
+                                        {
+                                            xDoc.Save(xmlfile);
+                                            xDoc = null;
+                                            log.Info("SupplierPartID Fixed in file : " + xmlfile);
+                                        }
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        log.Info("Error while fixing SupplierPartID in file " + ex.Message);
+                                    }
+
+                                    log.Info("Processing File : " + xmlfile);
+
+                                    xmlContent = string.Empty;
+                                    using (StreamReader reader = new StreamReader(xmlfile))
+                                    {
+                                        xmlContent = reader.ReadToEnd();
+                                        reader.Close();
+                                    }
+
+                                    log.Info("Preparing Request for posting order");
+                                    System.Net.HttpWebRequest request = (System.Net.HttpWebRequest)System.Net.WebRequest.Create(OrderManagerWS);
+                                    log.Info("WS url is : " + OrderManagerWS);
+                                    request.Method = "POST";
+                                    System.Text.UTF8Encoding encoding = new System.Text.UTF8Encoding();
+                                    byte[] postBytes = encoding.GetBytes(xmlContent);
+                                    request.ContentType = "application/x-www-form-urlencoded";
+                                    request.ContentLength = postBytes.Length;
+                                    request.Credentials = new System.Net.NetworkCredential("1urk6", "Great4you$");
+
+                                    using (Stream newStream = request.GetRequestStream())
+                                    {
+                                        newStream.Write(postBytes, 0, postBytes.Length);
+                                    }
+                                    log.Info("Request for posting order prepared successfully");
+                                    log.Info("Posting Order");
+                                    using (System.Net.HttpWebResponse response = (System.Net.HttpWebResponse)request.GetResponse())
+                                    {
+                                        ;
+                                    }
+                                    log.Info("Order Posted Successfully");
+
+                                    log.Info("Updating OrderType");
+                                    XmlDocument node = new XmlDocument();
+                                    node.LoadXml(xmlContent);
+
+                                    DateTime ODate = new DateTime();
+                                    double OTotal = 0;
+                                    string OID = GetValue("/cXML/Request/OrderRequest/OrderRequestHeader", "orderID", node);
+                                    if (GetValue("/cXML/Request/OrderRequest/OrderRequestHeader", "orderDate", node) != string.Empty)
+                                        ODate = Convert.ToDateTime(GetValue("/cXML/Request/OrderRequest/OrderRequestHeader", "orderDate", node));
+                                    if (GetValue("/cXML/Request/OrderRequest/OrderRequestHeader/Total/Money", "", node) != string.Empty)
+                                        OTotal = Convert.ToDouble(GetValue("/cXML/Request/OrderRequest/OrderRequestHeader/Total/Money", "", node));
+
+                                    UpdateOrderType(OID, "Covalent", ODate, OTotal);
+                                    log.Info("Updating OrderType Completed");
+
+                                    if (ProcessedFilesLocation != string.Empty)
+                                    {
+                                        if (File.Exists(Path.Combine(ProcessedFilesLocation, Path.GetFileName(xmlfile))))
+                                            File.Delete(Path.Combine(ProcessedFilesLocation, Path.GetFileName(xmlfile)));
+                                        log.Info("Moving file to ProcessedFilesLocation, from " + IncomingFileLocation + " to " + ProcessedFilesLocation);
+                                        File.Move(xmlfile, Path.Combine(ProcessedFilesLocation, Path.GetFileName(xmlfile)).ToString());
+                                    }
+                                    log.Info("File Loaded Successfully: " + xmlfile);
+                                }
+                                catch (WebException webex)
+                                {
+                                    try
+                                    {
+                                        WebResponse errResp = webex.Response;
+                                        using (Stream respStream = errResp.GetResponseStream())
+                                        {
+                                            StreamReader reader = new StreamReader(respStream);
+                                            string text = reader.ReadToEnd();
+                                            log.Info(text);
+                                        }
+                                        
+                                    }
+                                    catch
+                                    {
+                                    }
+                                }
+                                catch (Exception ex)
+                                {
+                                    log.Info("Error while processing file :" + ex.Message);
+                                    log.Info("stack track of the error :" + ex.StackTrace);
+                                }
+							}
+						}
+					}
+				}
+			}
+			catch (Exception ex)
+			{
+				log.Info("Error while executing LoadNewXMLFiles transaction:"+ex.Message);				
+			}
+		}
+                
+                void gvIncidents_AutoFilterCellEditorInitialize(object sender, ASPxGridViewEditorEventArgs e)
+        {
+            ASPxGridView gvIncidents = sender as ASPxGridView;
+            if (e.Column.FieldName == "IncidentStatusID")
+            {
+
+                ASPxDropDownEdit dde = e.Editor as ASPxDropDownEdit;
+                dde.ClientSideEvents.CloseUp = String.Format("function (s, e) {{ ApplyFilter(s, {0})}}", e.Column.FieldName);
+                dde.ClientSideEvents.TextChanged = String.Format("function(s,e) {{SynchronizeListBoxValues(s, e, cls{0});}}", e.Column.FieldName);
+                dde.ClientSideEvents.DropDown = String.Format("function(s,e) {{SynchronizeListBoxValues(s, e, cls{0});}}", e.Column.FieldName);
+                dde.ReadOnly = true;
+            }
+            
+            else if (e.Column.FieldName == "AgencyTypeID")
+            {
+                ASPxDropDownEdit dde = e.Editor as ASPxDropDownEdit;
+                dde.ClientSideEvents.CloseUp = String.Format("function (s, e) {{ ApplyFilter(s, {0})}}", e.Column.FieldName);
+                dde.ClientSideEvents.TextChanged = String.Format("function(s,e) {{SynchronizeListBoxValues(s, e, cls{0});}}", e.Column.FieldName);
+                dde.ClientSideEvents.DropDown = String.Format("function(s,e) {{SynchronizeListBoxValues(s, e, cls{0});}}", e.Column.FieldName);
+                if (!IsPostBack)
+                {
+                    if (dtaAgencyType.Select("ActiveByDefaultValue=0").Length > 0)
+                    {
+                        if (dtaAgencyType.Select("ActiveByDefaultValue=1").Length > 0)
+                        {
+                            string idlist = string.Empty;
+                            foreach (DataRow dr in dtaAgencyType.Rows)
+                            {
+                                if (Convert.ToBoolean(dr["ActiveByDefaultValue"]) == true)
+                                {
+                                    dde.Text = dde.Text + dr["Description"].ToString() + ",";
+                                    idlist = idlist + dr["AgencyTypeID"].ToString() + ",";
+                                }
+                            }
+                            if (idlist.EndsWith(","))
+                            {
+                                idlist = idlist.Substring(0, idlist.Length - 1);
+                            }
+                            if (dde.Text.EndsWith(","))
+                            {
+                                dde.Text = dde.Text.Substring(0, dde.Text.Length - 1);
+                            }
+                            Dictionary<object, string> values = new Dictionary<object, string>();
+                            //Dictionary<object, string> values; //;= new Dictionary<object,string>;
+                            values.Add("AgencyTypeID", dde.Text);
+                            Session["defaultfilter"] = values;// as Dictionary<object, string>;
+
+                            //[AgencyTypeID] = 2 Or [AgencyTypeID] = 3
+                            gvIncidents.FilterExpression = "AgencyTypeID in (" + idlist + ")";
+                        }
+                    }
+                }
+                dde.ReadOnly = true;
+            }
+
+        }
+
+
+
+        void gvIncidents_ProcessColumnAutoFilter(object sender, ASPxGridViewAutoFilterEventArgs e)
+        {
+            try
+            {
+                string typevalues = string.Empty;
+
+
+
+                string[] strfilter = e.Value.Split(',');
+
+                //if (e.Column.FieldName == "AgencyID" && dtaAgencies.Rows.Count == strfilter.Length)
+                //{
+                //    e.Criteria = null;
+                //    return;
+                //}
+                if (e.Column.FieldName == "AgencyTypeID" && dtaAgencyType.Rows.Count == strfilter.Length)
+                {
+                    e.Criteria = null;
+                    return;
+                }
+
+                if (e.Value.ToString() == "-1")
+                    e.Criteria = null;
+                log.Info("Criteria created:" + e.Criteria);
+
+                if (e.Column.FieldName != "IncidentStatusID" && e.Column.FieldName != "AgencyTypeID")
+                    return;
+
+                
+
+                if (e.Kind == GridViewAutoFilterEventKind.CreateCriteria)
+                {
+
+                    if (criteriaValues == null)
+                    {
+                        return;
+                    }
+                    criteriaValues[e.Column.FieldName] = e.Value;
+                    Session["criteriaValues"] = criteriaValues;
+                    log.Info("CriteriaValue when Created:" + criteriaValues);
+                    log.Info("Value when Criteria Created:" + e.Value);
+
+                }
+                if (e.Kind == GridViewAutoFilterEventKind.ExtractDisplayText)
+                {
+                    if (Session["defaultfilter"] != null && e.Column.FieldName == "AgencyTypeID")
+                    {
+                        criteriaValues = Session["defaultfilter"] as Dictionary<object, string>;
+                        Session["criteriaValues"] = criteriaValues;
+                        Session["defaultfilter"] = null;
+                    }
+                    else
+                    {
+                        criteriaValues = Session["criteriaValues"] as Dictionary<object, string>;
+                    }
+                    if (criteriaValues == null)
+                    {
+                        return;
+                    }
+                    e.Value = criteriaValues[e.Column.FieldName];
+                    log.Info("Criteria When Extracted:" + criteriaValues);
+                    log.Info("Value When Extracted:" + e.Value);
+
+                }
+                string[] values = e.Value.Split(',') as string[];
+                log.Info("Values Split:" + values);
+
+                string criteria = string.Empty;
+
+                GroupOperator group = new GroupOperator();
+                int Incidentactvalue = 0;
+                int AgencyValue = 0;
+                int AgencyTypeValue = 0;
+                group.OperatorType = GroupOperatorType.Or;
+                foreach (String value in values)
+                {
+                    log.Info("Loop started to Retrive All data by String value");
+
+                    log.Info("String Value:" + value);
+                    if (value == "")
+                    {
+                        e.Criteria = null;
+                        return;
+                    }
+                    if (e.Column.FieldName == "IncidentStatusID")
+                    {
+                        log.Info("For Status");
+                        Incidentactvalue = Convert.ToInt32(dtaIncidentStatus.Select("IncidentStatus='" + value + "'")[0]["IncidentStatusID"]);
+                        log.Info("Incidentid:" + Incidentactvalue);
+                        BinaryOperator op = new BinaryOperator(e.Column.FieldName, Incidentactvalue, BinaryOperatorType.Equal);
+                        log.Info("BinaryOperator for Incidents:" + op);
+                        group.Operands.Add(op);
+
+                    }
+                    
+                    else if (e.Column.FieldName == "AgencyTypeID")
+                    {
+                        log.Info("For AgencyType");
+                        AgencyTypeValue = Convert.ToInt32(dtaAgencyType.Select("Description='" + value + "'")[0]["AgencyTypeID"]);
+                        log.Info("AgencyTypeID:" + AgencyTypeValue);
+                        BinaryOperator op = new BinaryOperator(e.Column.FieldName, AgencyTypeValue, BinaryOperatorType.Equal);
+                        group.Operands.Add(op);
+                        log.Info("BinaryOperator for AgencyType:" + op);
+
+                    }
+                }
+                log.Info("Loop end");
+                e.Criteria = group;
+                log.Info("Criteria after loop:" + e.Criteria);
+            }
+            catch (Exception ex)
+            {
+                log.Error("Error When Processing Coulmn Filter:", ex);
+                throw;
+            }
+
+        }
+        
+        void gvAgencyNotes_CustomCallback(object sender, ASPxGridViewCustomCallbackEventArgs e)
+        {
+            if (e.Parameters == "updatestatus")
+            {
+                for (int i = 0; i < gvAgencyNotes.VisibleRowCount; i++)
+                {
+                    if (gvAgencyNotes.Selection.IsRowSelected(i))
+                    {
+                        int AgencyNotesID = Convert.ToInt32(gvAgencyNotes.GetRowValues(i, new string[] { "AgencyNotesID" }));
+
+                        dt.UpdateNotesStatus(AgencyNotesID, Convert.ToInt32(cmbeditallstatus.SelectedItem.Value));
+                    }
+                }
+                gvAgencyNotes.JSProperties["cpUpdateStatus"] = "1";
+            }
+
+            GetAgencyNotes();
+        }
+        
+        protected static UserConfigBase Load(System.Type type, string fileName)
+		{
+			if (File.Exists(fileName))
+			{
+				using (FileStream fs = File.OpenRead(fileName))
+				{
+					XmlSerializer sr = new XmlSerializer(type);
+					UserConfigBase ucb = (UserConfigBase)sr.Deserialize(fs);
+					ucb.fileName = fileName;
+					return ucb;
+				}
+			}
+			return null;
+		}
+                
+                private void SubmitCreateTokenRequest(string Token,string cc,string expMonth,string expYear,string BName,int PurchaseOrderID)
+        {
+            try
+            {
+               
+
+                log.Info("Retrieving paytrace userinfo from config file");
+                string PayTraceUserName = System.Configuration.ConfigurationSettings.AppSettings["PayTraceUserID"].ToString();
+                string PayTracePassword = System.Configuration.ConfigurationSettings.AppSettings["PayTracePassword"].ToString();
+                log.Info("paytrace userinfo from config file retrieved successfully!");
+
+                
+
+                log.Info("Decrypting CCNumber");
+                OSICLib.Mine mine = new OSICLib.Mine();
+                cc = mine.OSIDecrypt(cc);
+
+                log.Info("Length of CC " + cc.Length);
+
+                string ccdigit = string.Format("{0}", cc.Substring(cc.Length - 4, 4));
+
+                log.Info(String.Format(" Last 4 Digit of CC is  {0}", ccdigit));
+
+                log.Info("CCNumber decryped successfully!");
+
+                //log.Info("Calling paytrace transaction to create customer token(custid)");
+                //Dictionary<string, string> responseValue = comp.CreateCustomerToken("Y", Token, cc, expMonth, expYear, BName);
+                //log.Info("paytrace transaction to create customer token(custid) called successfully!");
+                //Token = comp.GetResponseValue("CUSTID");
+                //UpdatePOToken(PurchaseOrderID, Token);
+
+                log.Info("Assigning paytrace url to variable");
+                string sPayTraceURL = "https://paytrace.com/api/default.pay";
+                log.Info("paytrace url assigned to variable succssfully");
+
+                WebClient wClient = new WebClient();
+
+                System.Net.ServicePointManager.SecurityProtocol = (SecurityProtocolType)3072;
+
+                //process a keyed transaction
+                log.Info("Creating Parameter string");
+                String sRequest = "PARMLIST=" + HttpUtility.UrlEncode("UN~" + PayTraceUserName + "|PSWD~" + PayTracePassword + "|TRANXTYPE~Authorization|CC~" + cc + "|EXPMNTH~" + expMonth + "|EXPYR~" + expYear + "|TERMS~Y|CUSTID~" + Token + "|BNAME~" + BName + "|METHOD~CreateCustomer|");
+                log.Info("Parameter string created successfully!");
+                
+                wClient.Headers.Add("Content-Type", "application/x-www-form-urlencoded");
+                string sResponse = "";
+
+                log.Info("Requesting Response from paytrace");
+                sResponse = wClient.UploadString(sPayTraceURL, sRequest);
+                log.Info("Requesting Response from paytrace finished");
+                log.Info("Response from paytrace:" + sResponse);
+                string strERROR = "";                  
+
+                string[] name_value_pairs = sResponse.Split('|');
+                foreach (string row in name_value_pairs)
+                {
+                    string[] values = row.Split('~');
+                    if (values.Length == 2)
+                    {
+                        log.Info(values[0] + " : " + values[1] + "<br>");
+                        if (values[0] == "ERROR")
+                        {
+                            strERROR = strERROR + values[1];
+                        }                           
+                        //can continue to grab other response variables as needed} 
+                }
+                if (strERROR != "")
+                {
+                    log.Info("<br>The following error occurred: " + strERROR + ".<br>");
+                }
+                else
+                {
+                    UpdatePOToken(PurchaseOrderID, Token);
+                }
+                }
+            }
+            catch(Exception ex)
+            {
+                log.Info("Error while creating token:" + ex.Message);
+                throw;
+            }
+        }
+        
+        public void ProcessRequest(HttpContext context)
+        {
+
+            log.Info("ProcessRequest started");
+
+            Stream stream = context.Request.InputStream;
+            string request = null;
+            using (StreamReader reader = new StreamReader(stream))
+            {
+                request = reader.ReadToEnd();
+            }
+
+            int SaveOrderToDisk = 0;
+            if (System.Configuration.ConfigurationSettings.AppSettings["SaveOrderToDisk"] != null)
+            {
+                SaveOrderToDisk = Convert.ToInt16(System.Configuration.ConfigurationSettings.AppSettings["SaveOrderToDisk"]);
+            }
+            bool result = false;
+            if (SaveOrderToDisk == 0)
+            {
+                InitMapping(context);
+                result = ProcessDocument(context, request);
+                string name = DateTime.Now.Ticks.ToString();
+                using (StreamWriter writter = new StreamWriter(
+                           (result ? ConfigurationSettings.AppSettings["Parsed"] : ConfigurationSettings.AppSettings["Problematic"]) +
+                           @"\" + name + ".xml"))
+                {
+                    writter.Write(request);
+                }
+            }
+            else
+            {
+               
+                try
+                {
+                    string filename = "";
+                    filename = Path.Combine(System.Configuration.ConfigurationSettings.AppSettings["POXMLPath"].ToString() , "PO-" + DateTime.Now.ToString("yyMMddhhmmss") + ".xml");
+                    using (StreamWriter writter = new StreamWriter(filename))
+                    {
+                        writter.Write(request);
+                    }
+                    if (File.Exists(filename))
+                    {
+                        result = true;
+                    }
+                }
+                catch
+                {
+                    result = false;
+                }
+                
+                
+            }
+
+
+            bool sendResponse = false;
+
+            try
+            {
+                sendResponse = Convert.ToBoolean(System.Configuration.ConfigurationSettings.AppSettings["SendResponse"]);
+            }
+            catch
+            {
+                sendResponse = false;
+            }
+
+            if (sendResponse)
+            {
+                string statusCode = (result == true ? "200" : "500"), status = (result == true ? "OK" : "FAILED");
+
+                string resultText = string.Format(@"<?xml version=""1.0"" encoding=""UTF-8""?>
+<!DOCTYPE cXML SYSTEM ""http://xml.cXML.org/schemas/cXML/1.1.008/cXML.dtd"">
+<cXML payloadID=""{0}"" timestamp=""{1}"">
+<Response>
+	<Status code =""{2}"" text=""{3}""/>
+</Response>
+</cXML>", payLoadID, timeStamp, statusCode, status);
+
+                using (System.IO.StreamWriter sWriter = new StreamWriter(context.Response.OutputStream))
+                {
+                    sWriter.Write(resultText);
+                }
+            }
+
+        }
+        
+          private void postCmd_Click(object sender, System.EventArgs e)
+        {
+            string connection;
+            if (connectionEdt.SelectedIndex >= 0)
+                connection = connectionEdt.Text;
+            else
+                connection = ConfigurationSettings.AppSettings["Post"];
+
+            //connection = "http://www.hub-vision.com/completeordermanagerws/dodordersws.asmx";
+            //connection = "http://localhost/RESQImportWS/RESQHandler.asmx";
+            for (int i = 0; i < repeatEdt.Value; i++)
+            {
+                HttpWebRequest request = (HttpWebRequest)WebRequest.Create(connection);
+                request.Method = "POST";
+                ASCIIEncoding encoding = new ASCIIEncoding();
+                byte[] postBytes = encoding.GetBytes(sampleOrder.Text);
+                request.ContentType = "application/x-www-form-urlencoded";
+                request.ContentLength = postBytes.Length;
+                request.Credentials = new NetworkCredential("1urk6", "Great4you$");
+                //			request.Credentials = new NetworkCredential("tubo", "tubo");
+
+                request.Timeout = 999999;
+                try
+                {
+                    using (Stream newStream = request.GetRequestStream())
+                    {
+                        newStream.Write(postBytes, 0, postBytes.Length);
+                    }
+                    using (HttpWebResponse response = (HttpWebResponse)request.GetResponse())
+                    {
+                        Stream dataStream = response.GetResponseStream();
+                        StreamReader reader = new StreamReader(dataStream);
+                        string responseFromServer = reader.ReadToEnd();
+                        
+                    }
+                }
+                catch (Exception ex)
+                {
+                    WebException wex = (WebException)ex;
+                    if (wex.Response != null)
+                    {
+                        using (Stream receiveStream = wex.Response.GetResponseStream())
+                        {
+                            using (StreamReader sr = new StreamReader(receiveStream))
+                            {
+                                string html = sr.ReadToEnd();
+
+                                wex.Response.Close();
+                            }
+                        }
+                        MessageBox.Show(this, ex.Message);
+                        break;
+                    }
+                }
+            }
+        }
+        
+        void gvReportResult_HtmlRowPrepared(object sender, ASPxGridViewTableRowEventArgs e)
+        {
+            if (e.RowType != GridViewRowType.Data)
+                return;
+            if (Session["dtReportData"] != null)
+            {
+                if (((DataTable)Session["dtReportData"]).Columns.Contains("BackGroundColor"))
+                {
+                    if (e.GetValue("BackGroundColor") != null && e.GetValue("BackGroundColor").ToString() != string.Empty)
+                    {
+                        e.Row.BackColor = System.Drawing.Color.FromName(e.GetValue("BackGroundColor").ToString());
+                    }
+                }
+                if (((DataTable)Session["dtReportData"]).Columns.Contains("ForeGroundColor"))
+                {
+                    if (e.GetValue("ForeGroundColor") != null && e.GetValue("ForeGroundColor").ToString() != string.Empty)
+                    {
+                        e.Row.ForeColor = System.Drawing.Color.FromName(e.GetValue("ForeGroundColor").ToString());
+                    }
+                }
+            }
+
+        }
+        
+          protected void panelSendMessages_Callback(object sender, CallbackEventArgsBase e)
+        {
+            System.Threading.Thread.Sleep(2000);
+            if (e.Parameter == null)
+                return;
+            if (e.Parameter.ToString() == string.Empty)
+                return;
+
+            string ToPhone = e.Parameter.ToString();
+
+            string ImageName = txtImage.Text.Trim();
+            if (txtImage.Text.Trim() != string.Empty && txtTextOnImage.Text.Trim() != string.Empty && Session["ImageName"]==null)
+            {
+
+                string ImageFileName = txtImage.Text.Trim();
+                Bitmap bitMapImage = new System.Drawing.Bitmap(Path.Combine(ImageFolder, ImageFileName));
+
+                using (Bitmap newImage = new System.Drawing.Bitmap(bitMapImage.Width, bitMapImage.Height + 30))
+                {
+                    using (Graphics g = Graphics.FromImage(newImage))
+                    {
+                        g.FillRectangle(new SolidBrush(Color.Black), new Rectangle(0, 0, newImage.Width, newImage.Height));
+                        g.DrawImage(bitMapImage, new Rectangle(0, 30, bitMapImage.Width, bitMapImage.Height));
+                        g.SmoothingMode = SmoothingMode.AntiAlias;
+                        Font font = null;
+                        if (txtTextSize.Text.Trim() == string.Empty)
+                        {
+                            font = new Font("Tahoma", 8.0f);
+                        }
+                        else
+                        {
+                            font = new Font("Tahoma", (float)Convert.ToInt16(txtTextSize.Text.Trim()));
+                        }
+                        //g.DrawString( txtTextOnImage.Text.Trim(), new Font("Arial", 16, FontStyle.Bold), SystemBrushes.WindowText, new Point(1, 5));
+                        g.DrawString(txtTextOnImage.Text.Trim(), font, Brushes.White, new RectangleF(1, 1, newImage.Width, newImage.Height));
+                    }
+                    newImage.Save(Path.Combine(ImageFolder, Path.GetFileNameWithoutExtension(ImageFileName) + "_1" + Path.GetExtension(ImageFileName)), ImageFormat.Jpeg);
+                    ImageName = Path.GetFileNameWithoutExtension(ImageFileName) + "_1" + Path.GetExtension(ImageFileName);
+                    Session["ImageName"] = ImageName;
+                }
+                bitMapImage.Dispose();
+
+            }
+
+            if (Session["ImageName"] != null)
+            {
+                ImageName = Session["ImageName"].ToString();
+            }
+            var twilio = new TwilioRestClient(SID, Token);
+
+            
+            if (txtImage.Text == string.Empty)
+            {
+                var message = twilio.SendMessage(Phone, ToPhone, txtMessage.Text.Trim());
+            }
+            else
+            {
+                var message = twilio.SendMessage(Phone, ToPhone, txtMessage.Text.Trim(), new string[] { ImageWebFolder + "/" + ImageName });
+            }
+       
+
+            
+
+        }
+        
+        public void InitContext(XmlNode xNode)
+        {
+            try
+            {
+                // LogMacroEvent("Initializing Context");
+
+                nsmgr = new CustomContext(new NameTable());
+                System.Xml.XPath.XPathNavigator nav = xNode.CreateNavigator();
+
+                if (nav.MoveToFirstNamespace())
+                {
+                    if (nav.LocalName == "")
+                        //Add a default prefix for default namespaces
+                        //We need to override the default namespace provided in the XML doc.
+                        nsmgr.AddNamespace("hvd", nav.Value);
+                    else
+                    {
+                        try { nsmgr.AddNamespace(nav.LocalName, nav.Value); }
+                        catch { }
+                    }
+                    while (nav.MoveToNextNamespace())
+                    {
+                        if (nav.LocalName == "")
+                            //Add a default prefix for default namespaces
+                            //We need to override the default namespace provided in the XML doc.
+                            nsmgr.AddNamespace("hvd", nav.Value);
+                        try { nsmgr.AddNamespace(nav.LocalName, nav.Value); }
+                        catch { }
+                    }
+                }
+
+                nsmgr.AddNamespace(string.Empty, "");
+            }
+            catch (Exception ex)
+            {
+                // LogMacroEvent("Error while Initializing Context.", ex);
+                throw;
+            }
+        }
+
+        private XmlDocument GetDocument(string content, string docType)
+        {
+            SgmlReader reader = null;
+            try
+            {
+
+
+                using (StringReader sReader = new StringReader(content.Replace("]]>", "")))
+                {
+                    reader = new SgmlReader();
+                    reader.InputStream = sReader;
+                    reader.DocType = docType;
+
+                    if (reader.Read())
+                    {
+
+                        XmlDocument doc = new XmlDocument();
+                        //string xmlString = System.IO.File.ReadAllText(filepath);
+
+                        if (docType == "HTML")
+                            doc.Load(reader);
+                        else
+                            doc.LoadXml(reader.ReadOuterXml());
+
+
+                        return doc;
+                    }
+                    else
+                        throw new ApplicationException("Failed to read document.");
+                }
+            }
+            catch
+            {
+                reader = null;
+
+                throw;
+            }
+        }
