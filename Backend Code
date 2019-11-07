@@ -188,3 +188,113 @@ protected void listBox_Init(object sender, EventArgs e)
             editorEmailContentCompose.Html += editorEmailContent.Html;
             GetResponseEmailAddresses();
         }
+        
+        void gvpolygondetail_CustomCallback(object sender, DevExpress.Web.ASPxGridViewCustomCallbackEventArgs e)
+        {
+            try
+            {
+
+                string[] Keys = e.Parameters.Split(new string[] { "::" }, StringSplitOptions.None);
+
+                ASPxHiddenField hidfildSegment = null;
+                if (Session["SegmentState"] != null)
+                {
+                    hidfildSegment = (ASPxHiddenField)Session["SegmentState"];
+                }
+                else
+                {
+                    hidfildSegment = hdchecksegmentsele;
+                }
+
+                if (hidfildSegment.Contains(Keys[0].ToString()))
+                    hidfildSegment.Set(Keys[0].ToString(), Keys[1]);
+                else
+                    hidfildSegment.Add(Keys[0].ToString(), Keys[1]);
+
+                Session["SegmentState"] = hidfildSegment;
+
+
+
+                if (Session["SegmentState"] != null)
+                {
+                    hidfildSegment = (ASPxHiddenField)Session["SegmentState"];
+
+                    foreach (var item in hidfildSegment)
+                    {
+                        string[] selectedkey = item.Value.ToString().Split(new string[] { "," }, StringSplitOptions.None);
+
+                        int Keyvalue = gvmapsegmentlayer.FindVisibleIndexByKeyValue(item.Key);
+                        ASPxGridView gvpolygondetail = gvmapsegmentlayer.FindDetailRowTemplateControl(Keyvalue, "gvpolygondetail") as ASPxGridView;
+
+                        if (gvpolygondetail != null)
+                        {
+                            gvpolygondetail.Selection.UnselectAll();
+
+
+                            for (int i = 0; i < selectedkey.Length; i++)
+                            {
+                                gvpolygondetail.Selection.SelectRowByKey(selectedkey[i]);
+                            }
+                        }
+                    }
+                }
+
+                Session["CheckUncheck"] = "CheckUncheck";
+
+            }
+            catch
+            {
+                throw;
+            }
+
+        }
+
+protected void btnsavedata_Click(object sender, EventArgs e)
+        {
+        
+
+            ASPxButton btnSave = (ASPxButton)sender;
+
+            string Latitute = string.Empty;
+            string Longitute = string.Empty;
+
+            GridViewDataItemTemplateContainer container = (GridViewDataItemTemplateContainer)btnSave.NamingContainer;
+            object[] values = (object[])container.Grid.GetRowValues(container.VisibleIndex, new string[] { "Latitude", "Longitude" });
+
+            dt.InsertIncidentOptions(ui.CurrentIncidentID, "Latitude", values[0].ToString());
+            dt.InsertIncidentOptions(ui.CurrentIncidentID, "Longitude", values[1].ToString());
+            Session["ReloadSettings"] = "1";
+            hdcentersave.Value = "1";
+
+            ScriptManager.RegisterStartupScript(this, typeof(string), "script", "<script language='javascript'>RefreshParent();</script>", false);
+           
+
+        }
+        
+        
+        public string replaceTemplate(string Template, string connectionString, int ContactID, string EmailAddress, int AgencyID, string subject,int UserID)
+        {
+            try
+            {
+                DataSet ds = GetContactDetails(connectionString, ContactID, EmailAddress, AgencyID, subject,UserID);
+                StringBuilder sbXslOutput = new StringBuilder();
+                XmlDataDocument xd = new XmlDataDocument(ds);
+
+                byte[] byteArray = Encoding.ASCII.GetBytes(Template);
+                MemoryStream stream = new MemoryStream(byteArray);
+                XmlReader xread = XmlReader.Create(stream);
+
+                using (XmlWriter xslWriter = XmlWriter.Create(sbXslOutput))
+                {
+                    XslCompiledTransform transformer = new XslCompiledTransform();
+                    transformer.Load(xread);
+                    XsltArgumentList args = new XsltArgumentList();
+                    transformer.Transform(xd, args, xslWriter);
+                }
+                return sbXslOutput.ToString();
+            }
+            catch
+            {
+                throw;
+            }
+        }
