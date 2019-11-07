@@ -1,12 +1,8 @@
 # CodingSample
 
-I added some sample code with different funtionality .
+I added some C# Winform code with different funtionality .
 
-Here is my one of the project "Online Tracking System" details : 
+Also added some screenshots of User Interface that I designed and  developed in my past job and during certified training.
 
-You can access project from here,
-http://commsar.info/CommSARCommand/login.aspx?ReturnUrl=%2fcommsarcommand%2fcccreatemaps.aspx 
 
-Login Details:UserName : demoPassword : Sarcast9
-we can create different type of maps like google map, open cycle map etc. from here track teams. also can know current location of person.
 
